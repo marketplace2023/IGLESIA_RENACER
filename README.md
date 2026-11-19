@@ -54,14 +54,15 @@ DATABASE_URL="postgresql://..." npm run dev
 
 ## Flujo
 
-1. **Registrar persona**: nombres, apellidos, teléfono de casa y personal, dirección y zona,
-   cómo llegó (evangelismo o visitante), quién la invitó o contactó, líder y estado.
-   - **¿Su hogar será casa de amistad?** Si se activa, su casa queda registrada como casa de amistad
-     (con su dirección y zona, día y hora de reunión) y la persona es el anfitrión. Las casas no se crean aparte.
-   - Si no, se elige la casa de amistad a la que asiste.
-2. **Registrar contactos y visitas** desde la ficha de la persona: tipo (visita, llamada, WhatsApp,
+1. **Casas de amistad** (administrador): se registran primero (nombre, dirección, zona, líder, día y hora).
+2. **Registrar persona**: nombres, apellidos, teléfono de casa y personal, dirección y zona,
+   cómo llegó (evangelismo o visitante), quién la invitó o contactó, casa de amistad, líder y estado.
+   - Estados: Nuevo, En seguimiento, **Integrado**, Inactivo.
+   - Si es **Integrado**, se elige su estatus: Ganado, En Consolidación, En Escuela de Formación,
+     En Academia de Líderes, Lanzado o En Discipulado.
+3. **Registrar contactos y visitas** desde la ficha de la persona: tipo (visita, llamada, WhatsApp,
    reunión, otro), fecha y observaciones. El primer contacto pasa a la persona de *Nuevo* a *En seguimiento*.
-3. El **Inicio** muestra quién lleva más de 15 días sin contacto, los registros recientes y la actividad.
+4. El **Inicio** muestra quién lleva más de 15 días sin contacto, los registros recientes y la actividad.
 
 ## Estructura
 

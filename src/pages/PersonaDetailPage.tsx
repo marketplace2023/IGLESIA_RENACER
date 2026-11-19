@@ -6,7 +6,6 @@ import {
   CalendarPlus,
   Church,
   Footprints,
-  HeartHandshake,
   House,
   MapPin,
   Megaphone,
@@ -22,12 +21,13 @@ import { useUser } from "@/context/auth";
 import { api, errorMsg } from "@/lib/api";
 import { useData } from "@/lib/use-data";
 import { fecha, fechaLarga, hace, hoyISO, telLink, waLink } from "@/lib/format";
-import { ESTADO_LABEL, TIPO_LABEL, type Estado, type PersonaDetalle, type TipoContacto } from "@/lib/types";
+import { ESTADO_LABEL, ETAPA_LABEL, TIPO_LABEL, type Estado, type Etapa, type PersonaDetalle, type TipoContacto } from "@/lib/types";
+import { EstadoEtapaFields } from "@/components/estado-etapa";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge, EstadoBadge, OrigenBadge } from "@/components/ui/badge";
+import { EstadoBadge, OrigenBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
-import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Segmented, Textarea } from "@/components/ui/field";
 import { Card, CardHeader, EmptyState, PageLoader } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
 import { BlurFade } from "@/components/magicui/blur-fade";
@@ -127,10 +127,10 @@ export function PersonaDetailPage() {
   if (error) return <EmptyState icon={<UserRound />} title={error}><Link to="/personas" className="text-primary hover:underline">Volver a la lista</Link></EmptyState>;
   if (!p) return <PageLoader />;
 
-  async function cambiarEstado(estado: Estado) {
+  async function cambiarEstado(estado: Estado, etapa: Etapa | null) {
     try {
-      await api.patch(`/personas/${p!.id}/estado`, { estado });
-      toast.ok(`Estado: ${ESTADO_LABEL[estado]}`);
+      await api.patch(`/personas/${p!.id}/estado`, { estado, etapa });
+      toast.ok(`Estado: ${ESTADO_LABEL[estado]}${etapa ? ` · ${ETAPA_LABEL[etapa]}` : ""}`);
       reload();
     } catch (e) {
       toast.error(errorMsg(e));
@@ -184,12 +184,7 @@ export function PersonaDetailPage() {
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <OrigenBadge origen={p.origen} />
-                <EstadoBadge estado={p.estado} />
-                {p.casa_propia && (
-                  <Badge tone="success">
-                    <HeartHandshake className="size-3" /> Anfitrión
-                  </Badge>
-                )}
+                <EstadoBadge estado={p.estado} etapa={p.etapa} />
                 <span className="text-xs text-muted-foreground">· Último contacto: {hace(p.ultimo_contacto).toLowerCase()}</span>
               </div>
             </div>
@@ -248,34 +243,14 @@ export function PersonaDetailPage() {
                 <Dato icon={<UsersRound />} label={evangelismo ? "Lo contactó" : "Lo invitó"}>
                   {p.invitado_por}
                 </Dato>
-                {p.casa_propia ? (
-                  <Dato icon={<HeartHandshake />} label="Su hogar es casa de amistad">
-                    <Link to="/casas" className="font-medium hover:underline">
-                      {p.casa_propia.nombre}
-                    </Link>
-                    <span className="block text-muted-foreground">
-                      {[p.casa_propia.dia_reunion, p.casa_propia.hora].filter(Boolean).join(" · ") || "Horario por definir"} ·{" "}
-                      {p.casa_propia.total_personas} {p.casa_propia.total_personas === 1 ? "persona" : "personas"}
-                    </span>
-                  </Dato>
-                ) : (
-                  <Dato icon={<House />} label="Casa de amistad a la que asiste">
-                    {p.casa_nombre}
-                  </Dato>
-                )}
+                <Dato icon={<House />} label="Casa de amistad">
+                  {p.casa_nombre}
+                </Dato>
                 <Dato icon={<UserRound />} label="Líder asignado">
                   {p.lider_nombre}
                 </Dato>
-                <div className="border-t pt-4">
-                  <Field label="Cambiar estado" htmlFor="estado-rapido">
-                    <Select id="estado-rapido" value={p.estado} onChange={(e) => cambiarEstado(e.target.value as Estado)}>
-                      {(Object.keys(ESTADO_LABEL) as Estado[]).map((k) => (
-                        <option key={k} value={k}>
-                          {ESTADO_LABEL[k]}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                <div className="space-y-4 border-t pt-4">
+                  <EstadoEtapaFields idPrefix="estado-rapido" estado={p.estado} etapa={p.etapa} onChange={cambiarEstado} />
                 </div>
               </div>
             </GlowCard>
@@ -370,7 +345,7 @@ export function PersonaDetailPage() {
         open={borrarPersona}
         title="¿Eliminar a esta persona?"
         message={`Se borrará a ${p.nombres} ${p.apellidos} y todo su historial de contactos${
-          p.casa_propia ? `, y también la casa de amistad «${p.casa_propia.nombre}» (sus miembros quedarán sin casa)` : ""
+          ""
         }. Esta acción no se puede deshacer. Si solo dejó de asistir, considera marcarla como "Inactivo".`}
         onConfirm={eliminarPersona}
         onCancel={() => setBorrarPersona(false)}

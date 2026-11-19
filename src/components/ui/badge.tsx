@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { ESTADO_LABEL, ORIGEN_LABEL, type Estado, type Origen } from "@/lib/types";
+import { ESTADO_LABEL, ETAPA_LABEL, ORIGEN_LABEL, type Estado, type Etapa, type Origen } from "@/lib/types";
 
 const tones = {
   neutral: "bg-muted text-muted-foreground ring-border",
@@ -29,8 +29,14 @@ export function Badge({ tone = "neutral", className, children }: { tone?: Tone; 
 
 const estadoTone: Record<Estado, Tone> = { nuevo: "primary", en_seguimiento: "info", integrado: "success", inactivo: "neutral" };
 
-export function EstadoBadge({ estado }: { estado: Estado }) {
-  return <Badge tone={estadoTone[estado]}>{ESTADO_LABEL[estado]}</Badge>;
+/** Estado; si es "Integrado" muestra la etapa (p. ej. "Integrado · En Consolidación"). */
+export function EstadoBadge({ estado, etapa }: { estado: Estado; etapa?: Etapa | null }) {
+  return (
+    <Badge tone={estadoTone[estado]}>
+      {ESTADO_LABEL[estado]}
+      {estado === "integrado" && etapa && <span className="font-normal opacity-85">· {ETAPA_LABEL[etapa]}</span>}
+    </Badge>
+  );
 }
 
 export function OrigenBadge({ origen }: { origen: Origen }) {

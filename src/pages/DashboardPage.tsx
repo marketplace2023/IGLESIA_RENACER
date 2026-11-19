@@ -15,7 +15,7 @@ import {
 import type { ReactNode } from "react";
 import { useUser } from "@/context/auth";
 import { useData } from "@/lib/use-data";
-import { TIPO_LABEL, type Resumen } from "@/lib/types";
+import { ETAPA_LABEL, TIPO_LABEL, type Etapa, type Resumen } from "@/lib/types";
 import { fecha, hace, telLink, waLink } from "@/lib/format";
 import { GlowCard } from "@/components/aceternity/glow";
 import { NumberTicker } from "@/components/magicui/number-ticker";
@@ -164,7 +164,7 @@ export function DashboardPage() {
                           </p>
                         </Link>
                         <div className="hidden sm:block">
-                          <EstadoBadge estado={p.estado} />
+                          <EstadoBadge estado={p.estado} etapa={p.etapa} />
                         </div>
                         {tel && (
                           <div className="flex gap-1">
@@ -225,6 +225,26 @@ export function DashboardPage() {
                   ))}
                 </ul>
               </div>
+
+              {data.integrado > 0 && (
+                <div>
+                  <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">Estatus integrado</p>
+                  <ul className="space-y-2">
+                    {(Object.keys(ETAPA_LABEL) as Etapa[]).map((k) => (
+                      <li key={k}>
+                        <Link
+                          to={`/personas?estado=integrado&etapa=${k}`}
+                          className="flex items-center gap-3 rounded-md text-sm hover:text-primary"
+                        >
+                          <span className="size-1.5 rounded-full bg-success/70" />
+                          <span className="flex-1">{ETAPA_LABEL[k]}</span>
+                          <span className="w-6 text-right font-medium tabular-nums">{data.etapas?.[k] ?? 0}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </Card>
         </BlurFade>

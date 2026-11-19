@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { BellRing, ChevronRight, HeartHandshake, MessageCircle, Phone, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { BellRing, ChevronRight, MessageCircle, Phone, Search, UserPlus, UsersRound, X } from "lucide-react";
 import { useUser } from "@/context/auth";
 import { useData } from "@/lib/use-data";
-import { ESTADO_LABEL, type Casa, type Estado, type Lider, type Persona } from "@/lib/types";
+import { ESTADO_LABEL, ETAPA_LABEL, type Casa, type Estado, type Etapa, type Lider, type Persona } from "@/lib/types";
 import { hace, telLink, waLink, diasDesde } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, EstadoBadge, OrigenBadge } from "@/components/ui/badge";
@@ -81,7 +81,7 @@ export function PersonasPage() {
       { replace: true },
     );
 
-  const filtrosActivos = ["origen", "estado", "lider", "casa", "pendientes"].some((k) => params.get(k));
+  const filtrosActivos = ["origen", "estado", "etapa", "lider", "casa", "pendientes"].some((k) => params.get(k));
   const pendientes = params.get("pendientes") === "1";
 
   return (
@@ -115,13 +115,39 @@ export function PersonasPage() {
             <option value="evangelismo">Evangelismo</option>
             <option value="visitante">Visitante</option>
           </Select>
-          <Select value={params.get("estado") ?? ""} onChange={(e) => setFilter("estado", e.target.value)} aria-label="Estado">
+          <Select
+            value={params.get("etapa") ? `integrado:${params.get("etapa")}` : (params.get("estado") ?? "")}
+            onChange={(e) => {
+              // "integrado:consolidacion" → estado=integrado & etapa=consolidacion
+              const [estado, etapa] = e.target.value.split(":");
+              setParams(
+                (prev) => {
+                  const n = new URLSearchParams(prev);
+                  if (estado) n.set("estado", estado);
+                  else n.delete("estado");
+                  if (etapa) n.set("etapa", etapa);
+                  else n.delete("etapa");
+                  return n;
+                },
+                { replace: true },
+              );
+            }}
+            aria-label="Estado"
+          >
             <option value="">Estado: todos</option>
             {(Object.keys(ESTADO_LABEL) as Estado[]).map((k) => (
               <option key={k} value={k}>
                 {ESTADO_LABEL[k]}
+                {k === "integrado" ? " (todos)" : ""}
               </option>
             ))}
+            <optgroup label="Estatus integrado">
+              {(Object.keys(ETAPA_LABEL) as Etapa[]).map((k) => (
+                <option key={k} value={`integrado:${k}`}>
+                  {ETAPA_LABEL[k]}
+                </option>
+              ))}
+            </optgroup>
           </Select>
           <Select value={params.get("casa") ?? ""} onChange={(e) => setFilter("casa", e.target.value)} aria-label="Casa de amistad">
             <option value="">Casa de amistad: todas</option>
@@ -210,7 +236,6 @@ export function PersonasPage() {
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">
                               {p.nombres} {p.apellidos}
-                              {p.casa_propia_id && <HeartHandshake className="ml-1.5 inline size-3.5 text-success" aria-label="Anfitrión de casa de amistad" />}
                             </p>
                             {p.zona && <p className="truncate text-xs text-muted-foreground">{p.zona}</p>}
                           </div>
@@ -227,7 +252,7 @@ export function PersonasPage() {
                         <p className="truncate text-xs text-muted-foreground">{p.lider_nombre ?? "Sin líder"}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <EstadoBadge estado={p.estado} />
+                        <EstadoBadge estado={p.estado} etapa={p.etapa} />
                       </td>
                       <td className="px-4 py-3">
                         <UltimoContacto p={p} />
@@ -251,7 +276,6 @@ export function PersonasPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">
                           {p.nombres} {p.apellidos}
-                          {p.casa_propia_id && <HeartHandshake className="ml-1.5 inline size-3.5 text-success" aria-label="Anfitrión de casa de amistad" />}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {[p.zona, p.lider_nombre].filter(Boolean).join(" · ") || "Sin líder asignado"}
@@ -261,7 +285,7 @@ export function PersonasPage() {
                     </Link>
                     <div className="mt-3 flex flex-wrap items-center gap-1.5">
                       <OrigenBadge origen={p.origen} />
-                      <EstadoBadge estado={p.estado} />
+                      <EstadoBadge estado={p.estado} etapa={p.etapa} />
                       <Badge>Contacto: {hace(p.ultimo_contacto).toLowerCase()}</Badge>
                     </div>
                     {(p.telefono_personal || p.telefono_casa) && (

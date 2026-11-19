@@ -1,24 +1,14 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Footprints, HeartHandshake, House, MapPin, Megaphone, NotebookPen, Phone, Save, UserRound } from "lucide-react";
+import { ArrowLeft, Footprints, House, MapPin, Megaphone, NotebookPen, Phone, Save, UserRound } from "lucide-react";
 import { useUser } from "@/context/auth";
 import { api, errorMsg } from "@/lib/api";
 import { useData } from "@/lib/use-data";
 import { hoyISO } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import {
-  DIAS_SEMANA,
-  ESTADO_LABEL,
-  type Casa,
-  type CasaPropia,
-  type Estado,
-  type Lider,
-  type Origen,
-  type PersonaDetalle,
-} from "@/lib/types";
-import { Field, Input, Segmented, Select, Switch, Textarea } from "@/components/ui/field";
+import type { Casa, Estado, Etapa, Lider, Origen, PersonaDetalle } from "@/lib/types";
+import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/field";
 import { BannerStrip } from "@/components/brand";
+import { EstadoEtapaFields } from "@/components/estado-etapa";
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader, PageLoader } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/toast";
@@ -38,12 +28,8 @@ type FormState = {
   casa_amistad_id: string;
   lider_id: string;
   estado: Estado;
+  etapa: Etapa | null;
   notas: string;
-  // Su hogar como casa de amistad
-  casa_activa: boolean;
-  casa_nombre: string;
-  casa_dia: string;
-  casa_hora: string;
 };
 
 function Section({ icon, title, description, children }: { icon: ReactNode; title: string; description?: string; children: ReactNode }) {
@@ -61,7 +47,7 @@ function Section({ icon, title, description, children }: { icon: ReactNode; titl
   );
 }
 
-function PersonaForm({ inicial, id, casaPropia }: { inicial: FormState; id?: number; casaPropia?: CasaPropia | null }) {
+function PersonaForm({ inicial, id }: { inicial: FormState; id?: number }) {
   const user = useUser();
   const navigate = useNavigate();
   const toast = useToast();
@@ -84,17 +70,7 @@ function PersonaForm({ inicial, id, casaPropia }: { inicial: FormState; id?: num
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (f.casa_activa && !f.direccion.trim()) {
-      setError("Para registrar su hogar como casa de amistad, escribe la dirección.");
-      document.getElementById("direccion")?.focus();
-      return;
-    }
-    const { casa_activa, casa_nombre, casa_dia, casa_hora, ...persona } = f;
-    const body = {
-      ...persona,
-      casa_amistad_id: casa_activa ? "" : persona.casa_amistad_id,
-      casa_propia: { activa: casa_activa, nombre: casa_nombre, dia_reunion: casa_dia, hora: casa_hora },
-    };
+    const body = f;
     setBusy(true);
     setError(null);
     try {
@@ -175,93 +151,22 @@ function PersonaForm({ inicial, id, casaPropia }: { inicial: FormState; id?: num
       </BlurFade>
 
       <BlurFade delay={0.2}>
-        <Section icon={<House />} title="Casa de amistad y asignación" description="Su hogar, la casa a la que asiste y el líder responsable.">
-          {/* Interruptor: su hogar será casa de amistad */}
-          <div
-            className={cn(
-              "rounded-2xl border p-4 transition-colors duration-300 sm:col-span-2",
-              f.casa_activa ? "border-primary/40 bg-primary/8" : "bg-secondary/50",
-            )}
+        <Section icon={<House />} title="Asignación" description="Casa de amistad, líder responsable y estado.">
+          <Field
+            label="Casa de amistad"
+            htmlFor="casa"
+            hint={casas && casas.length === 0 ? "Aún no hay casas registradas: créalas en «Casas de amistad»." : undefined}
           >
-            <div className="flex items-center gap-3">
-              <span
-                className={cn(
-                  "flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors",
-                  f.casa_activa ? "bg-linear-to-br from-primary to-brand-lime text-white" : "bg-muted text-muted-foreground",
-                )}
-              >
-                <HeartHandshake className="size-5" />
-              </span>
-              <label htmlFor="casa-toggle" className="min-w-0 flex-1 cursor-pointer">
-                <p className="text-sm font-medium">¿Su hogar será casa de amistad?</p>
-                <p className="text-xs text-muted-foreground">Su casa quedará registrada como casa de amistad y será el anfitrión.</p>
-              </label>
-              <Switch id="casa-toggle" checked={f.casa_activa} onChange={(v) => set("casa_activa", v)} />
-            </div>
-
-            <AnimatePresence initial={false}>
-              {f.casa_activa && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="overflow-hidden"
-                >
-                  <div className="grid gap-4 pt-4 sm:grid-cols-3">
-                    <Field label="Nombre de la casa" htmlFor="casa-nombre" className="sm:col-span-3">
-                      <Input
-                        id="casa-nombre"
-                        value={f.casa_nombre}
-                        onChange={(e) => set("casa_nombre", e.target.value)}
-                        maxLength={100}
-                        placeholder={`Casa de ${[f.nombres, f.apellidos].filter(Boolean).join(" ") || "…"}`}
-                      />
-                    </Field>
-                    <Field label="Día de reunión" htmlFor="casa-dia">
-                      <Select id="casa-dia" value={f.casa_dia} onChange={(e) => set("casa_dia", e.target.value)}>
-                        <option value="">Por definir</option>
-                        {DIAS_SEMANA.map((d) => (
-                          <option key={d}>{d}</option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field label="Hora" htmlFor="casa-hora">
-                      <Input id="casa-hora" type="time" value={f.casa_hora} onChange={(e) => set("casa_hora", e.target.value)} />
-                    </Field>
-                    <p className="flex items-start gap-1.5 self-end pb-2.5 text-xs text-muted-foreground">
-                      <MapPin className="mt-px size-3.5 shrink-0" />
-                      {f.direccion.trim() ? `Se reunirán en: ${f.direccion}` : <span className="text-warning">Escribe la dirección arriba</span>}
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {!f.casa_activa && casaPropia && (
-              <p className="mt-3 rounded-lg bg-warning/12 px-3 py-2 text-xs text-warning">
-                Al guardar se eliminará la casa de amistad «{casaPropia.nombre}»
-                {casaPropia.total_personas === 2 && " y su otro miembro quedará sin casa asignada"}
-                {casaPropia.total_personas > 2 && ` y sus otros ${casaPropia.total_personas - 1} miembros quedarán sin casa asignada`}.
-              </p>
-            )}
-          </div>
-
-          {!f.casa_activa && (
-            <Field label="Casa de amistad a la que asiste" htmlFor="casa">
-              <Select id="casa" value={f.casa_amistad_id} onChange={(e) => elegirCasa(e.target.value)}>
-                <option value="">Sin asignar</option>
-                {casas
-                  ?.filter((c) => !id || c.anfitrion_id !== id)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                      {c.zona ? ` · ${c.zona}` : ""}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-          )}
+            <Select id="casa" value={f.casa_amistad_id} onChange={(e) => elegirCasa(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {casas?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                  {c.zona ? ` · ${c.zona}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Líder asignado" htmlFor="lider">
             <Select id="lider" value={f.lider_id} onChange={(e) => set("lider_id", e.target.value)}>
               <option value="">Sin asignar</option>
@@ -273,15 +178,14 @@ function PersonaForm({ inicial, id, casaPropia }: { inicial: FormState; id?: num
               ))}
             </Select>
           </Field>
-          <Field label="Estado" htmlFor="estado">
-            <Select id="estado" value={f.estado} onChange={(e) => set("estado", e.target.value as Estado)}>
-              {(Object.keys(ESTADO_LABEL) as Estado[]).map((k) => (
-                <option key={k} value={k}>
-                  {ESTADO_LABEL[k]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <EstadoEtapaFields
+            estado={f.estado}
+            etapa={f.etapa}
+            onChange={(estado, etapa) => {
+              setF((s) => ({ ...s, estado, etapa }));
+              setError(null);
+            }}
+          />
         </Section>
       </BlurFade>
 
@@ -325,11 +229,8 @@ const vacio = (): FormState => ({
   casa_amistad_id: "",
   lider_id: "",
   estado: "nuevo",
+  etapa: null,
   notas: "",
-  casa_activa: false,
-  casa_nombre: "",
-  casa_dia: "",
-  casa_hora: "",
 });
 
 export function PersonaNuevaPage() {
@@ -358,12 +259,7 @@ export function PersonaEditarPage() {
       <PageHeader title={`Editar a ${data.nombres}`} />
       <PersonaForm
         id={data.id}
-        casaPropia={data.casa_propia}
         inicial={{
-          casa_activa: !!data.casa_propia,
-          casa_nombre: s(data.casa_propia?.nombre ?? null),
-          casa_dia: s(data.casa_propia?.dia_reunion ?? null),
-          casa_hora: s(data.casa_propia?.hora ?? null),
           nombres: data.nombres,
           apellidos: data.apellidos,
           telefono_casa: s(data.telefono_casa),
@@ -376,6 +272,7 @@ export function PersonaEditarPage() {
           casa_amistad_id: s(data.casa_amistad_id),
           lider_id: s(data.lider_id),
           estado: data.estado,
+          etapa: data.etapa,
           notas: s(data.notas),
         }}
       />

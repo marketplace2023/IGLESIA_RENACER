@@ -1,6 +1,7 @@
 export type Rol = "admin" | "lider";
 export type Origen = "evangelismo" | "visitante";
 export type Estado = "nuevo" | "en_seguimiento" | "integrado" | "inactivo";
+export type Etapa = "ganado" | "consolidacion" | "escuela_formacion" | "academia_lideres" | "lanzado" | "discipulado";
 export type TipoContacto = "visita" | "llamada" | "whatsapp" | "reunion" | "otro";
 
 export interface Usuario {
@@ -50,6 +51,8 @@ export interface Persona {
   casa_amistad_id: number | null;
   lider_id: number | null;
   estado: Estado;
+  /** Solo cuando estado = "integrado" */
+  etapa: Etapa | null;
   notas: string | null;
   creado_por: number | null;
   creado_por_nombre: string | null;
@@ -97,9 +100,10 @@ export interface Resumen {
   pendientes: number;
   contactos_mes: number;
   dias_pendiente: number;
+  etapas: Partial<Record<Etapa, number>>;
   pendientes_lista: Pick<
     Persona,
-    "id" | "nombres" | "apellidos" | "telefono_personal" | "telefono_casa" | "ultimo_contacto" | "fecha_llegada" | "estado"
+    "id" | "nombres" | "apellidos" | "telefono_personal" | "telefono_casa" | "ultimo_contacto" | "fecha_llegada" | "estado" | "etapa"
   >[];
   recientes: Pick<Persona, "id" | "nombres" | "apellidos" | "origen" | "fecha_llegada" | "creado_en" | "invitado_por">[];
   actividad: {
@@ -124,6 +128,16 @@ export const ESTADO_LABEL: Record<Estado, string> = {
   en_seguimiento: "En seguimiento",
   integrado: "Integrado",
   inactivo: "Inactivo",
+};
+
+/** Etapas del estado "Integrado", en orden */
+export const ETAPA_LABEL: Record<Etapa, string> = {
+  ganado: "Ganado",
+  consolidacion: "En Consolidación",
+  escuela_formacion: "En Escuela de Formación",
+  academia_lideres: "En Academia de Líderes",
+  lanzado: "Lanzado",
+  discipulado: "En Discipulado",
 };
 
 export const TIPO_LABEL: Record<TipoContacto, string> = {

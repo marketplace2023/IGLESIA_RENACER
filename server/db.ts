@@ -138,6 +138,9 @@ const SCHEMA = [
      usuario_id    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
      creado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
+  // Etapa dentro del estado "Integrado"
+  `ALTER TABLE personas ADD COLUMN IF NOT EXISTS etapa TEXT
+     CHECK (etapa IN ('ganado','consolidacion','escuela_formacion','academia_lideres','lanzado','discipulado'))`,
   `CREATE INDEX IF NOT EXISTS idx_personas_lider ON personas (lider_id)`,
   `CREATE INDEX IF NOT EXISTS idx_personas_casa  ON personas (casa_amistad_id)`,
   `CREATE INDEX IF NOT EXISTS idx_seg_persona    ON seguimientos (persona_id, fecha)`,

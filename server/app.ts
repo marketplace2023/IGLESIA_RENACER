@@ -7,7 +7,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { all, ensureDb, get, getJwtSecret, transaction, type Db, type Param } from "./db.ts";
+import { all, ensureDb, get, getJwtSecret, transaction, type Param } from "./db.ts";
 
 const COOKIE = "renacer_session";
 const SESSION_DAYS = 7;
@@ -257,8 +257,7 @@ api.delete("/usuarios/:id", adminOnly, async (req, res) => {
 
 /* ───────────────────────── casas de amistad ───────────────────────── */
 
-// Las casas de amistad NO se crean aparte: nacen al registrar (o editar) a una persona
-// marcando que su hogar será casa de amistad. Aquí solo se listan, ajustan y eliminan.
+// Las casas de amistad se registran aquí primero y luego se asocian a cada persona.
 api.get("/casas", async (_req, res) => {
   res.json(
     await all(`
@@ -273,17 +272,28 @@ api.get("/casas", async (_req, res) => {
   );
 });
 
-api.put("/casas/:id", adminOnly, async (req, res) => {
-  const id = idOrNull(req.params.id);
-  const b: Body = req.body ?? {};
+async function parseCasa(b: Body): Promise<Param[]> {
   const nombre = txt(b.nombre, 100);
   if (!nombre) throw new HttpError(400, "El nombre de la casa de amistad es obligatorio");
   const lider_id = idOrNull(b.lider_id);
   if (lider_id && !(await get("SELECT id FROM usuarios WHERE id = ?", [lider_id]))) throw new HttpError(400, "Líder no válido");
-  // Dirección y zona vienen del hogar del anfitrión (se editan en la ficha de la persona)
-  const rows = await all("UPDATE casas_amistad SET nombre=?, dia_reunion=?, hora=?, lider_id=? WHERE id=? RETURNING id", [
-    nombre, txt(b.dia_reunion, 30), txt(b.hora, 10), lider_id, id,
-  ]);
+  return [nombre, txt(b.direccion, 250), txt(b.zona, 80), txt(b.dia_reunion, 30), txt(b.hora, 10), lider_id];
+}
+
+api.post("/casas", adminOnly, async (req, res) => {
+  const row = await get<{ id: number }>(
+    "INSERT INTO casas_amistad (nombre, direccion, zona, dia_reunion, hora, lider_id) VALUES (?,?,?,?,?,?) RETURNING id",
+    await parseCasa(req.body ?? {}),
+  );
+  res.status(201).json({ id: row?.id });
+});
+
+api.put("/casas/:id", adminOnly, async (req, res) => {
+  const id = idOrNull(req.params.id);
+  const rows = await all(
+    "UPDATE casas_amistad SET nombre=?, direccion=?, zona=?, dia_reunion=?, hora=?, lider_id=? WHERE id=? RETURNING id",
+    [...(await parseCasa(req.body ?? {})), id],
+  );
   if (!rows.length) throw new HttpError(404, "Casa de amistad no encontrada");
   res.json({ ok: true });
 });
@@ -327,6 +337,11 @@ api.get("/personas", async (req, res) => {
   if (estado) {
     where.push("p.estado = ?");
     params.push(estado);
+  }
+  const etapa = txt(req.query.etapa, 30);
+  if (etapa) {
+    where.push("p.etapa = ?");
+    params.push(etapa);
   }
   const lider = req.query.lider === "ninguno" ? "ninguno" : idOrNull(req.query.lider);
   if (lider === "ninguno") where.push("p.lider_id IS NULL");
@@ -376,6 +391,7 @@ api.get("/personas/:id", async (req, res) => {
 });
 
 const ESTADOS = ["nuevo", "en_seguimiento", "integrado", "inactivo"];
+const ETAPAS = ["ganado", "consolidacion", "escuela_formacion", "academia_lideres", "lanzado", "discipulado"];
 
 async function parsePersona(b: Body) {
   const nombres = txt(b.nombres, 80);
@@ -399,67 +415,29 @@ async function parsePersona(b: Body) {
     fecha_llegada: isDate(b.fecha_llegada) ? b.fecha_llegada : null,
     casa_amistad_id,
     lider_id,
-    estado: ESTADOS.includes(String(b.estado)) ? String(b.estado) : "nuevo",
+    ...estadoYEtapa(b),
     notas: txt(b.notas, 3000),
   };
 }
 
-type PersonaData = Awaited<ReturnType<typeof parsePersona>>;
-type CasaPropia = { nombre: string; dia_reunion: string | null; hora: string | null } | null;
-
-/** Datos de "su hogar será casa de amistad" (null si el interruptor está apagado). */
-function parseCasaPropia(b: Body, d: PersonaData): CasaPropia {
-  const c = (b.casa_propia ?? null) as Body | null;
-  if (!c || c.activa !== true) return null;
-  if (!d.direccion) throw new HttpError(400, "Para registrar su hogar como casa de amistad, escribe la dirección");
-  return {
-    nombre: txt(c.nombre, 100) ?? `Casa de ${d.nombres} ${d.apellidos}`,
-    dia_reunion: txt(c.dia_reunion, 30),
-    hora: txt(c.hora, 10),
-  };
-}
-
-/** Crea, actualiza o elimina la casa de amistad del hogar de la persona (dentro de una transacción). */
-async function guardarCasaPropia(tx: Db, personaId: number, d: PersonaData, casa: CasaPropia) {
-  const [existente] = await tx.query<{ id: number }>("SELECT id FROM casas_amistad WHERE anfitrion_id = ?", [personaId]);
-  if (casa) {
-    let casaId: number;
-    if (existente) {
-      casaId = existente.id;
-      await tx.query(
-        "UPDATE casas_amistad SET nombre=?, direccion=?, zona=?, dia_reunion=?, hora=?, lider_id=COALESCE(lider_id, ?) WHERE id=?",
-        [casa.nombre, d.direccion, d.zona, casa.dia_reunion, casa.hora, d.lider_id, casaId],
-      );
-    } else {
-      const [nueva] = await tx.query<{ id: number }>(
-        "INSERT INTO casas_amistad (nombre, direccion, zona, dia_reunion, hora, lider_id, anfitrion_id) VALUES (?,?,?,?,?,?,?) RETURNING id",
-        [casa.nombre, d.direccion, d.zona, casa.dia_reunion, casa.hora, d.lider_id, personaId],
-      );
-      casaId = nueva.id;
-    }
-    // El anfitrión pertenece a su propia casa de amistad
-    await tx.query("UPDATE personas SET casa_amistad_id=? WHERE id=?", [casaId, personaId]);
-  } else if (existente) {
-    // Se apagó el interruptor: la casa deja de existir y sus miembros quedan sin casa (ON DELETE SET NULL)
-    await tx.query("DELETE FROM casas_amistad WHERE id = ?", [existente.id]);
-  }
+/** Estado y, si es "integrado", su etapa (Ganado, En Consolidación, …). */
+function estadoYEtapa(b: Body) {
+  const estado = ESTADOS.includes(String(b.estado)) ? String(b.estado) : "nuevo";
+  if (estado !== "integrado") return { estado, etapa: null };
+  const etapa = ETAPAS.includes(String(b.etapa)) ? String(b.etapa) : "ganado";
+  return { estado, etapa };
 }
 
 api.post("/personas", async (req, res) => {
   const d = await parsePersona(req.body ?? {});
-  const casa = parseCasaPropia(req.body ?? {}, d);
-  const id = await transaction(async (tx) => {
-    const [row] = await tx.query<{ id: number }>(
-      `INSERT INTO personas (nombres, apellidos, telefono_casa, telefono_personal, direccion, zona, origen,
-         invitado_por, fecha_llegada, casa_amistad_id, lider_id, estado, notas, creado_por)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
-      [d.nombres, d.apellidos, d.telefono_casa, d.telefono_personal, d.direccion, d.zona, d.origen as string,
-       d.invitado_por, d.fecha_llegada ?? hoyDe(req), d.casa_amistad_id, d.lider_id, d.estado, d.notas, me(res).id],
-    );
-    await guardarCasaPropia(tx, row.id, d, casa);
-    return row.id;
-  });
-  res.status(201).json({ id });
+  const row = await get<{ id: number }>(
+    `INSERT INTO personas (nombres, apellidos, telefono_casa, telefono_personal, direccion, zona, origen,
+       invitado_por, fecha_llegada, casa_amistad_id, lider_id, estado, etapa, notas, creado_por)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+    [d.nombres, d.apellidos, d.telefono_casa, d.telefono_personal, d.direccion, d.zona, d.origen as string,
+     d.invitado_por, d.fecha_llegada ?? hoyDe(req), d.casa_amistad_id, d.lider_id, d.estado, d.etapa, d.notas, me(res).id],
+  );
+  res.status(201).json({ id: row?.id });
 });
 
 api.put("/personas/:id", async (req, res) => {
@@ -467,18 +445,14 @@ api.put("/personas/:id", async (req, res) => {
   if (!id) throw new HttpError(404, "Persona no encontrada");
   await personaAccesible(me(res), id);
   const d = await parsePersona(req.body ?? {});
-  const casa = parseCasaPropia(req.body ?? {}, d);
-  await transaction(async (tx) => {
-    await tx.query(
-      `UPDATE personas SET nombres=?, apellidos=?, telefono_casa=?, telefono_personal=?, direccion=?, zona=?,
-         origen=?, invitado_por=?, fecha_llegada=?, casa_amistad_id=?, lider_id=?, estado=?, notas=?,
-         actualizado_en = now()
-       WHERE id=?`,
-      [d.nombres, d.apellidos, d.telefono_casa, d.telefono_personal, d.direccion, d.zona, d.origen as string,
-       d.invitado_por, d.fecha_llegada, d.casa_amistad_id, d.lider_id, d.estado, d.notas, id],
-    );
-    await guardarCasaPropia(tx, id, d, casa);
-  });
+  await all(
+    `UPDATE personas SET nombres=?, apellidos=?, telefono_casa=?, telefono_personal=?, direccion=?, zona=?,
+       origen=?, invitado_por=?, fecha_llegada=?, casa_amistad_id=?, lider_id=?, estado=?, etapa=?, notas=?,
+       actualizado_en = now()
+     WHERE id=?`,
+    [d.nombres, d.apellidos, d.telefono_casa, d.telefono_personal, d.direccion, d.zona, d.origen as string,
+     d.invitado_por, d.fecha_llegada, d.casa_amistad_id, d.lider_id, d.estado, d.etapa, d.notas, id],
+  );
   res.json({ ok: true });
 });
 
@@ -486,20 +460,15 @@ api.patch("/personas/:id/estado", async (req, res) => {
   const id = idOrNull(req.params.id);
   if (!id) throw new HttpError(404, "Persona no encontrada");
   await personaAccesible(me(res), id);
-  const estado = String(req.body?.estado);
-  if (!ESTADOS.includes(estado)) throw new HttpError(400, "Estado no válido");
-  await all("UPDATE personas SET estado=?, actualizado_en=now() WHERE id=?", [estado, id]);
+  if (!ESTADOS.includes(String(req.body?.estado))) throw new HttpError(400, "Estado no válido");
+  const { estado, etapa } = estadoYEtapa(req.body ?? {});
+  await all("UPDATE personas SET estado=?, etapa=?, actualizado_en=now() WHERE id=?", [estado, etapa, id]);
   res.json({ ok: true });
 });
 
 api.delete("/personas/:id", adminOnly, async (req, res) => {
-  const id = idOrNull(req.params.id);
-  await transaction(async (tx) => {
-    // Si su hogar era casa de amistad, la casa se elimina (sus miembros quedan sin casa).
-    // Los seguimientos se borran en cascada.
-    await tx.query("DELETE FROM casas_amistad WHERE anfitrion_id = ?", [id]);
-    await tx.query("DELETE FROM personas WHERE id = ?", [id]);
-  });
+  // Sus seguimientos se borran en cascada; si era anfitrión de una casa, la casa queda sin anfitrión.
+  await all("DELETE FROM personas WHERE id = ?", [idOrNull(req.params.id)]);
   res.json({ ok: true });
 });
 
@@ -546,7 +515,7 @@ api.get("/resumen", async (req, res) => {
       (SELECT MAX(x.fecha) FROM seguimientos x WHERE x.persona_id = p.id) AS ultimo_contacto
     FROM personas p WHERE ${s.sql}`;
 
-  const [totales, contactosMes, pendientes, recientes, actividad] = await Promise.all([
+  const [totales, contactosMes, pendientes, recientes, actividad, etapas] = await Promise.all([
     get<Record<string, number>>(
       `SELECT COUNT(*)::int AS total,
          COUNT(*) FILTER (WHERE origen = 'evangelismo')::int AS evangelismo,
@@ -586,6 +555,11 @@ api.get("/resumen", async (req, res) => {
        WHERE ${s.sql} ORDER BY sg.fecha DESC, sg.id DESC LIMIT 8`,
       s.params,
     ),
+    all<{ etapa: string; n: number }>(
+      `SELECT p.etapa, COUNT(*)::int AS n FROM personas p
+       WHERE p.estado = 'integrado' AND p.etapa IS NOT NULL AND ${s.sql} GROUP BY p.etapa`,
+      s.params,
+    ),
   ]);
 
   res.json({
@@ -595,6 +569,7 @@ api.get("/resumen", async (req, res) => {
     pendientes_lista: pendientes,
     recientes,
     actividad,
+    etapas: Object.fromEntries(etapas.map((e) => [e.etapa, e.n])),
   });
 });
 
