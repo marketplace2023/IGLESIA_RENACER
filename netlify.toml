@@ -1,0 +1,21 @@
+# Despliegue en Netlify: página estática (dist) + API como Netlify Function + datos en Neon.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# La API: /api/* → función "api"
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+# Aplicación de una sola página (React Router)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

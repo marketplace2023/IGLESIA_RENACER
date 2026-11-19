@@ -1,3 +1,5 @@
+import { hoyISO } from "./format";
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -8,8 +10,10 @@ export class ApiError extends Error {
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   let res: Response;
+  // "hoy" según el navegador: el servidor (Netlify) trabaja en UTC
+  const conHoy = `${url}${url.includes("?") ? "&" : "?"}hoy=${hoyISO()}`;
   try {
-    res = await fetch(`/api${url}`, {
+    res = await fetch(`/api${conHoy}`, {
       method,
       credentials: "include",
       headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
